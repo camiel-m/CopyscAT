@@ -1,27 +1,20 @@
+#!/usr/bin/env Rscript
+## Load stuff
 library("devtools")
-#####INITIAL ONE-TIME SETUP #####
-#STEP 1: replace  "~/CopyscAT" with wherever you git cloned the repo to
-# install("~/Documents/git_repos/CopyscAT")
-
-#alternate option: devools install-github option
-#some versions of R throw an error because of code warnings with Github install, the below line should fix this issue
-# Sys.setenv("R_REMOTES_NO_ERRORS_FROM_WARNINGS" = "true")
-# install_github("spcdot/copyscat")
-
-#load the package
 library(CopyscAT)
-
-
-#load your favourite genome
 library(BSgenome.Hsapiens.UCSC.hg38)
+
+## Get the correct paths
+outdir = commandArgs(trailingOnly=TRUE)[1]
+
 #use it to save references - this will create a genome chrom.sizes file, a cytobands file and a CpG file
-generateReferences(BSgenome.Hsapiens.UCSC.hg38,genomeText = "hg38",tileWidth = 1e6,outputDir = "~")
+generateReferences(BSgenome.Hsapiens.UCSC.hg38,genomeText = "hg38",tileWidth = 1e6,outputDir = outdir)
 
 ##### REGULAR WORKFLOW #####
 #initialize the environment (note: this needs to be done with every session in which you run Copy-scAT)
-initialiseEnvironment(genomeFile="~/data/CNV_test/hg38_chrom_sizes.tsv",
-                      cytobandFile="~/data/CNV_test/hg38_1e+06_cytoband_densities_granges.tsv",
-                      cpgFile="~/data/CNV_test/hg38_1e+06_cpg_densities.tsv",
+initialiseEnvironment(genomeFile=file.path(outdir, "hg38_chrom_sizes.tsv"),
+                      cytobandFile=file.path(outdir, "hg38_1e+06_cytoband_densities_granges.tsv"),
+                      cpgFile=file.path(outdir, "hg38_1e+06_cpg_densities.tsv"),
                       binSize=1e6,
                       minFrags=10,
                       cellSuffix=c("-1","-2"),
@@ -32,13 +25,13 @@ initialiseEnvironment(genomeFile="~/data/CNV_test/hg38_chrom_sizes.tsv",
 #to create your own use the process_fragment_file.py script included in the package and run it on a fragments.tsv.gz file of your choosing
 
 #SET OUTPUT DEFAULT DIRECTORY AND NAME
-setOutputFile("~/data/CNV_test","324_1")
+setOutputFile(outdir)
 
 #PART 1: INITIAL DATA NORMALIZATION
 #step 1 normalize the matrix
 #USING SAMPLE DATA FROM PACKAGE
 #option: if using your own file replace below with the following
-scData<-readInputTable("~/data/CNV_test/fragments_processed.tsv")
+scData<-readInputTable(file.path(inputdir, "fragments_processed.tsv")
 # scData<-scDataSamp
 scData_k_norm <- normalizeMatrixN(scData,logNorm = FALSE,maxZero=1e6,imputeZeros = FALSE,blacklistProp = 0.8,blacklistCutoff=125,dividingFactor=1,upperFilterQuantile = 1)
 #when using your own data, please make sure you don't have any excess / alt chromosomes

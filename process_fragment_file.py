@@ -6,6 +6,7 @@ import sys, getopt
 import math
 import numpy as np
 import gzip
+import pandas as pd
 
 #initialize variables
 #matrix of cells x regions
@@ -17,12 +18,13 @@ chrom_max = 0
 file_init = ''
 line1 = ''
 min_filter = 10000
+use_barcodes = False
 output_file = ''
 #chrom sizes file
 chrom_sizefile = ''
 #initialization
 try:
-   opts, args = getopt.getopt(sys.argv[1:],"hi:o:b:f:g:",["help","ifile=","ofile=","binsize=","frags=","genome="])
+   opts, args = getopt.getopt(sys.argv[1:],"hi:o:b:f:g:m:",["help","ifile=","ofile=","binsize=","frags=","genome=",'meta_data='])
    #opts, args = getopt.getopt(sys.argv[1:],"h",["help"])
    print("process_fragment_file",len(opts))
 except getopt.GetoptError as err:
@@ -44,6 +46,8 @@ for opt, arg in opts:
      min_filter = int(arg)
    elif opt in ("-g", "--genome"):
      chrom_sizefile = arg
+   elif opt in ("-m", "--meta_data"):
+     barcodes = pd.read_csv(arg)
 
 if len(opts)<5:
    print('process_fragment_file.py  -i <inputfile.tsv.gz> -o <outputfile.tsv> -b <binsize> -f <minfrags> -g <genomefile>')
@@ -79,31 +83,63 @@ def init_chrom_list_all():
 
 blank_list_all = init_chrom_list_all()
 
+if 'barcodes' in locals():
+  use_barcodes = True
+  valid_barcodes = set(barcodes['barcode'][barcodes['is__cell_barcode'] == 1])
+  print("Reading file")
+  #read file
+  lines_read = 0
+  with gzip.open(file_init,'rt') as reader:
+      for line1 in reader:
+          #print(line1 + " " + str(len(cell_ids)))
+        if (line1.find('#')!=-1):
+          continue 
+        line_split = line1.split('\t')
+        readLength=int(line_split[2])-int(line_split[1])-1
+        if line_split[3] in valid_barcodes:    ## Check if barcode is valid
+          if not line_split[0] in blank_list_all:  # Discard alternative contigs
+            continue
+          if (line_split[3] in cell_ids):
+            setIndex = int(math.floor(int(line_split[1]) / chrom_step))
+            cell_ids[line_split[3]][line_split[0]][setIndex] += readLength
+            cell_counts[line_split[3]] += 1
+          else:
+            cell_ids[line_split[3]]=init_chrom_list_all()
+            setIndex = int(math.floor(int(line_split[1]) / chrom_step))
+            cell_ids[line_split[3]][line_split[0]][setIndex] += readLength
+            cell_counts[line_split[3]]=1
+        lines_read+=1
+        if lines_read%100000==0:
+              print("Reading line " + str(lines_read) + "\n")
+  print("File loaded into memory")
 
-print("Reading file")
-#read file
-lines_read = 0
-with gzip.open(file_init,'rt') as reader:
-    for line1 in reader:
-        #print(line1 + " " + str(len(cell_ids)))
-      if (line1.find('#')!=-1):
-        continue 
-      line_split = line1.split('\t')
-      readLength=int(line_split[2])-int(line_split[1])-1
-      #print(line_split[0] + "\n")
-      if (line_split[3] in cell_ids):
-        setIndex = int(math.floor(int(line_split[1]) / chrom_step))
-        cell_ids[line_split[3]][line_split[0]][setIndex] += readLength
-        cell_counts[line_split[3]] += 1
-      else:
-        cell_ids[line_split[3]]=init_chrom_list_all()
-        setIndex = int(math.floor(int(line_split[1]) / chrom_step))
-        cell_ids[line_split[3]][line_split[0]][setIndex] += readLength
-        cell_counts[line_split[3]]=1
-      lines_read+=1
-      if lines_read%100000==0:
-            print("Reading line " + str(lines_read) + "\n")
-print("File loaded into memory")
+else:
+  print("Reading file")
+  #read file
+  lines_read = 0
+  with gzip.open(file_init,'rt') as reader:
+      for line1 in reader:
+          #print(line1 + " " + str(len(cell_ids)))
+        if (line1.find('#')!=-1):
+          continue 
+        line_split = line1.split('\t')
+        readLength=int(line_split[2])-int(line_split[1])-1
+        if not line_split[0] in blank_list_all:  # Discard alternative contigs
+          continue
+        #print(line_split[0] + "\n")
+        if (line_split[3] in cell_ids):
+          setIndex = int(math.floor(int(line_split[1]) / chrom_step))
+          cell_ids[line_split[3]][line_split[0]][setIndex] += readLength
+          cell_counts[line_split[3]] += 1
+        else:
+          cell_ids[line_split[3]]=init_chrom_list_all()
+          setIndex = int(math.floor(int(line_split[1]) / chrom_step))
+          cell_ids[line_split[3]][line_split[0]][setIndex] += readLength
+          cell_counts[line_split[3]]=1
+        lines_read+=1
+        if lines_read%100000==0:
+              print("Reading line " + str(lines_read) + "\n")
+  print("File loaded into memory")
 
 
 #how many pass filter    
@@ -120,7 +156,7 @@ with open(output_file,'w') as writer:
               writer.write("\t" + chrom + "_" + str(i*chrom_step))
     writer.write("\n")
     for cell in cell_ids:
-        if (cell_counts[cell] > min_filter):
+        if (cell_counts[cell] > min_filter) or use_barcodes:
            chr_list = cell_ids[cell]
            filter_passing += 1
            writer.write(cell)
@@ -131,5 +167,6 @@ with open(output_file,'w') as writer:
            writer.write("\n")
     
 print("Done writing output")
+print(f'Found total of {filter_passing} valid cells')
 
 
